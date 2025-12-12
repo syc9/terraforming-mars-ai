@@ -1,2 +1,2 @@
 # terraforming-mars-ai
-a recommendation engine to play the best moves to win the solo game of elon musk's favorite game, Terraforming Mars
+building a recommendation engine using data science principles and machine learning to optimize the best moves and win the solo game of elon musk's favorite game, Terraforming Mars

@@ -424,10 +424,10 @@ class TerraformingMarsSoloGame:
             "oceans": 0          # Target: 9
         }
 
-        self.deck = self.generate_deck()
+        self.deck = self.generate_deck(self.player.played_tags)
         self.deal_initial_hand()
 
-    def generate_deck(self):
+    def generate_deck(self, played_tags):
         return [
             Card("Acquired Company", 10, effects={"megacredits_production": 3}, tags=["earth"]),
             # Card("Adaption Technology", 12, effects={"special": 0}, tags=["science"]),
@@ -442,7 +442,7 @@ class TerraformingMarsSoloGame:
             Card("Artificial Photosynthesis", 12, effects={"plants_production": 1, "energy_production": 2}, tags=["science"]),
             Card("Asteroid", 14, effects={"raise_temperature": 1, "gain_titanium": 2}, tags=["event", "space"]),
             Card("Asteroid Mining", 30, effects={"titanium_production": 2}, tags=["jovian", "space"]),
-            # Card("Asteroid Mining Consortium", 13, effects={"titanium_production": 1}, tags=["jovian"], conditions={"production": {"titanium": 1}}),
+            Card("Asteroid Mining Consortium", 13, effects={"titanium_production": 1}, tags=["jovian"], conditions={"production": {"titanium": 1}}),
             Card("Beam from a Thorium Asteroid", 32, effects={"energy_production": 3, "heat_production": 3}, tags=["jovian", "space", "power"], conditions={"tags_played": {"jovian": 1}}),
             Card("Big Asteroid", 27, effects={"raise_temperature": 2, "gain_titanium": 4}, tags=["event", "space"]),
             Card("Biomass Combustors", 4, effects={"energy_production": 2}, tags=["power", "building"], conditions={"global_params_min": {"oxygen": 6}}),
@@ -453,7 +453,7 @@ class TerraformingMarsSoloGame:
             Card("Callisto Penal Mines", 24, effects={"megacredits_production": 3}, tags=["space", "jovian"]),
             Card("Capital", 26, effects={"energy_production": -2, "megacredits_production": 5, "gain_megacredits": 3}, tags=["city", "building"], conditions={"global_params_min": {"oceans": 4}, "production": {"energy": 2}}),
             Card("Carbonate Processing", 6, effects={"energy_production": -1, "heat_production": 3}, tags=["building"], conditions={"production": {"energy": 1}}),
-            Card("Cartel", 8, effects={"megacredits_production": 1*self.player.played_tags["earth"]}, tags=["earth"]),
+            Card("Cartel", 8, effects={"megacredits_production": played_tags["earth"]}, tags=["earth"]),
             Card("Cloud Seeding", 11, effects={"megacredits_production": -1, "plants_production": 2}, conditions={"global_params_min": {"oceans": 3}}),
             Card("Comet", 21, effects={"raise_temperature": 1, "place_ocean": 1}, tags=["event", "space"]),
             Card("Commerical District", 16, effects={"energy_production": -1, "megacredits_production": 4, "gain_megacredits": 3}, tags=["building", "city"], conditions={"production": {"energy": 1}}),
@@ -465,7 +465,7 @@ class TerraformingMarsSoloGame:
             Card("Domed Crater", 24, effects={"energy_production": -1, "megacredits_production": 3, "gain_megacredits": 3, "gain_plants": 3}, tags=["building", "city"], conditions={"global_params_max": {"oxygen": 7}, "production": {"energy": 1}}),
             # Card("Earth Catapult", 23, effects={"special": 2}, tags=["earth"]),
             # Card("Earth Office", 1, effects={"special": 3}, tags=["earth"]),
-            Card("Energy Saving", 15, effects={"energy_production": 1*self.player.played_tags["city"]}, tags=["power"]),
+            Card("Energy Saving", 15, effects={"energy_production": played_tags["city"]}, tags=["power"]),
             Card("Energy Tapping", 3, effects={"energy_production": 1}, tags=["power"]),
             Card("Eos Chasma National Park", 16, effects={"gain_plants": 3, "megacredits_production": 2}, tags=["building", "plant"], conditions={"global_params_min": {"temperature": -12}}),
             # Card("Extreme-Cold Fungus", 13, tags=["microbe"], actions=[]),
@@ -483,7 +483,7 @@ class TerraformingMarsSoloGame:
             Card("Giant Space Mirror", 17, effects={"energy_production": 3}, tags=["space", "power"]),
             Card("Grass", 11, effects={"plants_production": 1, "gain_plants": 3}, tags=["plant"], conditions={"global_params_min": {"temperature": -16}}),
             Card("Giant Escarpment Consortium", 6, effects={"steel_production": 1}, conditions={"production": {"steel": 1}}),
-            Card("Greenhouses", 6, effects={"gain_plants": 1*self.player.played_tags["city"]}, tags=["building", "plant"]),
+            Card("Greenhouses", 6, effects={"gain_plants": played_tags["city"]}, tags=["building", "plant"]),
             Card("Heather", 6, effects={"gain_plants": 1, "plants_production": 1}, tags=["plant"], conditions={"global_params_min": {"temperature": -14}}),
             Card("Hired Raiders", 1, effects={"gain_steel": 2, "gain_megacredits": 3}, tags=["event"]),
             Card("Ice Asteroid", 23, effects={"place_ocean": 2}, tags=["event", "space"]),
@@ -496,7 +496,7 @@ class TerraformingMarsSoloGame:
             Card("Imported Nitrogen", 23, effects={"increase_TR": 1, "gain_plants": 4}, tags=["event", "space", "earth"]),
             Card("Industrial Center", 4, effects={"gain_megacredits": 3, "steel_production": 1}, tags=["building"]),
             Card("Industrial Microbes", 12, effects={"energy_production": 1, "steel_production": 1}, tags=["building", "microbe"]),
-            Card("Insects", 9, effects={"plants_production": 1*self.player.played_tags["plant"]}, tags=["microbe"], conditions={"global_params_min": {"oxygen": 6}}),
+            Card("Insects", 9, effects={"plants_production": played_tags["plant"]}, tags=["microbe"], conditions={"global_params_min": {"oxygen": 6}}),
             Card("IO Mining Industries", 41, effects={"titanium_production": 2, "megacredits_production": 2}, tags=["jovian", "space"]),
             Card("Ironworks", 11, effects={"raise_oxygen": 1, "gain_steel": 1, "gain_energy": -4}, tags=["building"], conditions={"resources": {"energy": 4}}),
             Card("Kelp Farming", 17, effects={"plants_production": 3, "megacredits_production": 2, "gain_plants": 2}, tags=["plant"], conditions={"global_params_min": {"oceans": 6}}),
@@ -510,9 +510,9 @@ class TerraformingMarsSoloGame:
             Card("Magnetic Field Generators", 20, effects={"energy_production": -4, "plants_production": 2, "increase_TR": 3}, tags=["building"], conditions={"production": {"energy": 4}}),
             Card("Mangrove", 12, effects={"raise_oxygen": 1, "gain_plants": 2}, tags=["plant"], conditions={"global_params_min": {"temperature": 4}}),
             Card("Mass Convertor", 8, effects={"energy_production": 6}, tags=["science", "power"], conditions={"tags_played": {"science": 5}}),
-            Card("Media Archives", 8, effects={"gain_megacredits": 1*self.player.played_tags["event"]}, tags=["earth"]),
+            Card("Media Archives", 8, effects={"gain_megacredits": played_tags["event"]}, tags=["earth"]),
             # Card("Media Group", 6, effects={"special": 5}, tags=["earth"]),
-            Card("Medical Lab", 13, effects={"megacredits_production": int(1*self.player.played_tags["building"])}, tags=["science", "building"]),
+            Card("Medical Lab", 13, effects={"megacredits_production": int(played_tags["building"])}, tags=["science", "building"]),
             Card("Methane from Titan", 28, effects={"heat_production": 2, "plants_production": 2}, tags=["space", "jovian"], conditions={"global_params_min": {"oxygen": 2}}),
             Card("Micro-mills", 3, effects={"heat_production": 1}),
             Card("Mine", 4, effects={"steel_production": 1}, tags=["building"]),
@@ -532,7 +532,7 @@ class TerraformingMarsSoloGame:
             Card("Peroxide Power", 7, effects={"megacredits_production": -1, "energy_production": 2}, tags=["building", "power"]),
             Card("Phobos Space Haven", 25, effects={"titanium_production": 1, "gain_megacredits": 3}, tags=["city", "space"]),
             Card("Plantation", 15, effects={"raise_oxygen": 1, "gain_plants": 1}, tags=["plant"], conditions={"tags_played": {"science": 2}}),
-            Card("Power Grid", 18, effects={"energy_production": 1*self.player.played_tags["power"]}, tags=["power"]),
+            Card("Power Grid", 18, effects={"energy_production": played_tags["power"]}, tags=["power"]),
             Card("Power Plant", 4, effects={"energy_production": 1}, tags=["building", "power"]),
             Card("Power Supply Consortium", 5, effects={"energy_production": 1}, tags=["power"], conditions={"tags_played": {"power": 2}}),
             Card("Protected Valley", 23, effects={"raise_oxygen": 1, "megacredits_production": 2, "gain_plants": 2}, tags=["building", "plant"]),
@@ -543,7 +543,7 @@ class TerraformingMarsSoloGame:
             # Card("Research Outpost", 18, effects={"special": 6}, tags=["city", "science", "building"]),
             # Card("Robotic Workforce", 9, effects={"special": 7}, tags=["science"]},
             # Card("Rover Construction": 8, effects={"special": 8}, tags=["buliding"]),
-            Card("Satellites", 10, effects={"megacredits_production": 1*self.player.played_tags["space"]}, tags=["space"]),
+            Card("Satellites", 10, effects={"megacredits_production": played_tags["space"]}, tags=["space"]),
             Card("Soil Factory", 9, effects={"energy_production": -1, "plants_production": 1}, tags=["building"], conditions={"production": {"energy": 1}}),
             Card("Solar Power", 11, effects={"energy_production": 1}, tags=["building", "power"]),
             Card("Solar Wind Power", 11, effects={"energy_production": 1, "gain_titanium": 2}, tags=["science", "space", "power"]),
@@ -556,7 +556,7 @@ class TerraformingMarsSoloGame:
             Card("Strip Mine", 25, effects={"steel_production": 2, "titanium_production": 1, "raise_oxygen": 2, "energy_production": -2}, tags=["building"], conditions={"production": {"energy": 2}}),
             Card("Subterranean Reservoir", 11, effects={"place_ocean": 1}, tags=["event"]),
             Card("Tectonic Stress Power", 18, effects={"energy_production": 3}, tags=["building", "power"], conditions={"tags_played": {"science": 2}}),
-            Card("Terraforming Ganymede", 33, effects={"increase_TR": 1*self.player.played_tags["jovian"]}, tags=["space", "jovian"]),
+            Card("Terraforming Ganymede", 33, effects={"increase_TR": played_tags["jovian"]}, tags=["space", "jovian"]),
             Card("Titanium Mine", 7, effects={"titanium_production": 1}, tags=["building"]),
             Card("Towing a Comet", 23, effects={"raise_oxygen": 1, "place_ocean": 1, "gain_plants": 2}, tags=["event", "space"]),
             Card("Trans-Neptune Probe", 6, tags=["space", "science"]),
@@ -572,8 +572,8 @@ class TerraformingMarsSoloGame:
             Card("Water Splitting Plant", 12, effects={"raise_oxygen": 1, "gain_energy": -3}, tags=["building"], conditions={"global_params_min": {"oceans": 2}, "resources": {"energy": 3}}),
             Card("Wave Power", 8, effects={"energy_production": 1}, tags=["power"], conditions={"global_params_min": {"oceans": 3}}),
             Card("Windmills", 6, effects={"energy_production": 1}, tags=["power", "building"], conditions={"global_params_min": {"oxygen": 7}}),
-            Card("Worms", 8, effects={"plants_production": 1*self.player.played_tags["microbe"]}, tags=["microbe"], conditions={"global_params_min": {"oxygen": 4}}),
-            Card("Zeppelins", 13, effects={"megacredits_production": 1*self.player.played_tags["city"]}, conditions={"global_params_min": {"oxygen": 5}}),
+            Card("Worms", 8, effects={"plants_production": played_tags["microbe"]}, tags=["microbe"], conditions={"global_params_min": {"oxygen": 4}}),
+            Card("Zeppelins", 13, effects={"megacredits_production": played_tags["city"]}, conditions={"global_params_min": {"oxygen": 5}}),
 
             Card("Mining Rights", 4, effects={"steel_production": 1}, tags=["building"]),
             Card("Mining Area", 9, effects={"titanium_production": 1}, tags=["building"]),

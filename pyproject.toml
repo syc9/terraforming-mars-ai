@@ -10,3 +10,6 @@ dependencies = [
     "xgboost",
     "scikit-learn"
 ]
+
+[tool.setuptools]
+packages = []

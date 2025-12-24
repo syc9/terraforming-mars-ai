@@ -12,6 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import pickle
 
+GLOBAL_DECK = None
 
 def progress_score(state):
     T = state["temperature"]
@@ -49,8 +50,19 @@ weights = {
 }
 
 weight_progress = 1.1
-weight_tags = 0.01
-weight_syn = 0.05
+weight_tags = 0.02
+weight_syn = {
+    "tag_building": 0.02,
+    "tag_space": 0.02,
+    "tag_science": 0.03,
+    "tag_power": 0.02,
+    "tag_earth": 0.01,
+    "tag_jovian": 0.01,
+    "tag_plant": 0.02,
+    "tag_microbe": 0.01,
+    "tag_city": 0.01
+}
+
 # value of tags
 def valuable_tags(card):
     return (
@@ -64,6 +76,7 @@ def valuable_tags(card):
 def synergy(card, state):
     return card["tag_science"] + state["tag_science"]
 
+# calculation of expected output
 def compute_ELTC(card, state=None):
     sum = 0
     # for production and tags
@@ -71,17 +84,61 @@ def compute_ELTC(card, state=None):
         sum += card[key] * value
     # for tags and synergy
     sum += weight_tags * valuable_tags(card)
-    # sum += weight_syn * synergy(card, state)
+    for key, value in weight_syn.items():
+        if card[key] != 0:
+            sum += value * (card[key] + state[key])
 
     return sum
 
-def encode_state(global_parameters, generation, terraform_rating, production, resources, resource_value, played_tags):
+# (ADDED) for rollout objective
+def terminal_score(state):
+
+    tr = state["terraform_rating"]
+    # normalized for 0-1
+    progress = progress_score(state)
+
+    # bonus for completed global parameters
+    completed_bonus = (
+        (state["temperature"] >= 8) +
+        (state["oxygen"] >= 14) +
+        (state["oceans"] >= 9)
+    )
+
+    return (tr + 20*progress + 5*completed_bonus)
+
+# (ADDED) for heuristic policy
+def policy_score(card, state):
+
+    score = 0
+
+    score += 3 * (
+        card.get("increase_temperature", 0)
+        + card.get("increase_oxygen", 0)
+        + card.get("place_ocean", 0)
+    )
+
+    score += 2.5 * card.get("increase_TR", 0)
+
+    score += compute_ELTC(card, state)
+
+    score -= 0.05 * card.get("cost", 0)
+
+    return score
+
+# (added) cards in hand function using binary presence vector
+def encode_hand(hand):
+    vec = np.zeros(len(GLOBAL_DECK), dtype=np.int8)
+    vec[hand] = 1
+    return vec
+
+def encode_state(global_parameters, generation, terraform_rating, production, resources, resource_value, played_tags, cards_in_hand=[]):
     return {
         "temperature": global_parameters.get("temperature"),
         "oxygen": global_parameters.get("oxygen"),
         "oceans": global_parameters.get("oceans"),
         "generation": generation,
         "terraform_rating": terraform_rating,
+        "cards_in_hand": encode_hand(cards_in_hand),
 
         "megacredits_production": production.get("megacredits"),
         "steel_production": production.get("steel"),
@@ -114,8 +171,9 @@ def encode_state(global_parameters, generation, terraform_rating, production, re
 
     }
 
-def encode_card(name, cost, effects, tags, conditions):
+def encode_card(card_id, name, cost, effects, tags, conditions):
     return {
+        "card_id": card_id,
         "name": name,
         
         "cost": cost,
@@ -174,7 +232,7 @@ def encode_card(name, cost, effects, tags, conditions):
 
 def play_card(card, old_state):
 
-    new_state = old_state
+    new_state = old_state.copy()
 
     for key, value in card.items():
         # if there's a requirement to play the card, check if it can be played first
@@ -240,6 +298,7 @@ def play_card(card, old_state):
         return new_state
 
     # pay for card
+    new_state["cards_in_hand"][card["card_id"]] = 0
     new_state["megacredits"] -= net_cost
     new_state["steel"] -= steel_used
     new_state["titanium"] -= titanium_used
@@ -249,7 +308,7 @@ def play_card(card, old_state):
         key: value
         for key, value in card.items()
         if value != 0
-        and key not in {"name", "cost"}
+        and key not in {"card_id", "name", "cost"}
         and not key.startswith("requires_")
     }
 
@@ -316,6 +375,60 @@ def play_card(card, old_state):
         
     return new_state
 
+# for random.choice (need to edit for deck)
+def rollout_simulation(state, deck, max_steps=20, epsilon=0.15):
+    """
+    Policy-aware rollout:
+    - mostly greedy
+    - occasionally random (exploration)
+    """
+    sim_state = state.copy()
+
+    for _ in range(max_steps):
+        playable = []
+
+        for card in deck:
+            # check playability without mutating state
+            test_state = play_card(card, sim_state.copy())
+            if test_state != sim_state:
+                playable.append(card)
+
+        if not playable:
+            break
+        
+        if np.random.rand() < epsilon:
+            chosen = random.choice(playable)
+        else:
+            chosen = max(
+                playable,
+                key=lambda c: policy_score(c, sim_state)
+            )
+
+        sim_state = play_card(chosen, sim_state)
+
+        if (progress_score(sim_state) == 1):
+            break
+
+    return terminal_score(sim_state)
+
+def monte_carlo_target(old_state, card, deck, N=12):
+    """
+    Expected future value after playing a card
+    """
+
+    new_state = play_card(card, old_state.copy())
+
+    # punish an unplayable card
+    if new_state == old_state:
+        return -10
+
+    scores = [
+        rollout_simulation(new_state, deck)
+        for _ in range(N)
+    ]
+
+    return np.mean(scores)
+
 def build_training_row(old_state: dict, card: dict):
     # determine new state of game after card is played
     new_state = play_card(card, old_state)
@@ -328,12 +441,22 @@ def build_training_row(old_state: dict, card: dict):
     }
 
     # compute target
+    """
     y_value = (
         weight_progress
         * (progress_score(new_state) - progress_score(old_state))
         + compute_ELTC(card)
     )
+    """
 
+    # (ADDED) new target with monte_carlo
+    y_value = monte_carlo_target(
+        old_state, 
+        card,
+        GLOBAL_DECK,
+        12
+    )
+    
     return x_row, y_value
 
 # define generation progress 
@@ -353,9 +476,8 @@ def generation_from_progress(progress):
 
     return np.random.randint(lo, hi + 1)
 
-
 # generate state from random numbers
-def generate_random_state():
+def generate_random_state(card_sample):
 
         gp_rand = {
             "oxygen": np.random.randint(0, 14),
@@ -403,29 +525,60 @@ def generate_random_state():
         }
 
         # returns a dataframe of the entire state
-        return encode_state(gp_rand, gen_rand, tr_rand, prod_rand, res_rand, res_value_rand, tags_rand)
+        return encode_state(gp_rand, gen_rand, tr_rand, prod_rand, res_rand, res_value_rand, tags_rand, card_sample)
 
 # build dataset from random states
-def build_dataset(deck, n_samples):
+def build_dataset(n_samples):
     X_rows = []
     Y_rows = []
 
-    for _ in range(n_samples):
-        old_state_vec = generate_random_state()
-        card = random.choice(deck)
-        card_vec = encode_card(
-            card.name, card.cost, card.effects, card.tags, card.conditions
-        )
+    for i in range(n_samples):
+
+        # sample a random number of cards in hand
+        card_sample = random.sample(range(len(GLOBAL_DECK)), np.random.randint(1, 11))
+        old_state_vec = generate_random_state(card_sample)
+        card_vec = GLOBAL_DECK[card_sample[0]]
 
         x_row, y_value = build_training_row(old_state_vec, card_vec)
+
+        # print progress
+        print(f"\rSamples created: {i}/{n_samples}", end="", flush=True)
 
         X_rows.append(x_row)
         Y_rows.append({"target": y_value})
 
+    print()  # newline at end
     X = pd.DataFrame(X_rows)
+    # drop name of card
+    X = X.drop(columns=["card_name"])
     Y = pd.DataFrame(Y_rows)
 
+    print(f"Completed dataset build of {n_samples} samples")
     return X, Y
+
+def train_model(X, Y):
+    Y = np.asarray(Y).ravel()
+    Y_noisy = Y + np.random.normal(0, 0.05, size=len(Y))
+
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y_noisy, test_size=0.2)
+
+    model = XGBRegressor(
+        n_estimators=300,
+        max_depth=7,
+        learning_rate=0.05,
+        verbosity=1,
+        objective="reg:squarederror"
+    )
+
+    model.fit(X_train, Y_train)
+    preds=model.predict(X_test)
+    rmse= np.sqrt(mean_squared_error(Y_test, preds))
+    print(f"Model trained. Test RMSE: {rmse:.2f}")
+    return model
+
+def save_model(model, path="tm_xgboost.model"):
+    with open(path, "wb") as f:
+        pickle.dump(model, f)
 
 if __name__ == "__main__":
     # game instance for training
@@ -442,89 +595,16 @@ if __name__ == "__main__":
 
     deck = trainergame.generate_deck(played_tags)
 
-    X, Y = build_dataset(deck, 3)
+    GLOBAL_DECK = [
+        encode_card(index, c.name, c.cost, c.effects, c.tags, c.conditions) 
+        for index, c in enumerate(deck)
+    ]
 
+    assert all(card["card_id"] == i for i, card in enumerate(GLOBAL_DECK))
 
+    X, Y = build_dataset(10000)
 
-"""
-def generate_simplified_game_state(n_samples=10000):
-    return pd.DataFrame({
-        'generation': np.random.randint(1, 15, n_samples),
-        'megacredits': np.random.randint(0, 100, n_samples),
-        'steel_production': np.random.randint(0, 6, n_samples),
-        'energy_production': np.random.randint(0, 5, n_samples),
-        'played_science_tags': np.random.randint(0, 10, n_samples),
-        'terraform_rating': np.random.randint(20, 50, n_samples),
-        'temperature': np.random.randint(-15, 4, n_samples)*2,
-        'oxygen': np.random.randint(0, 14, n_samples),
-        'oceans': np.random.randint(0, 9, n_samples)
-    })
+    print(X.iloc[0])
 
-def generate_random_card(n_samples=10000):
-    return pd.DataFrame({
-        'card_cost': np.random.randint(5, 30, n_samples),
-        'card_vp': np.random.randint(0, 3, n_samples),
-        'effect_type': np.random.randint(0, 3, n_samples),
-        'requires_science_tag': np.random.choice([0, 1], n_samples)
-    })
-
-
-def compute_synthetic_score(state_df, card_df):
-    base_score = (
-        state_df['terraform_rating'] +
-        card_df['card_vp'] * 3 +
-        state_df['steel_production'] +
-        state_df['energy_production']
-    )
-
-    board_bonus = np.where(
-        (card_df['effect_type'] == 1) & (state_df['temperature'] < 0), 5, 0
-    )
-
-    penalty = np.where(
-        (card_df['requires_science_tag'] == 1) & (state_df['played_science_tags'] < 2), -5, 0
-    )
-
-    noise = np.random.normal(0, 2, len(base_score))
-
-    return base_score + board_bonus + penalty + noise
-
-
-def train_model():
-    print("Generating training data...")
-    n_samples = 10000
-    state_df = generate_simplified_game_state(n_samples)
-    card_df = generate_random_card(n_samples)
-    X = pd.concat([state_df, card_df], axis=1)
-    y = compute_synthetic_score(state_df, card_df)
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-
-    print("Training XGBoost model...")
-    model = XGBRegressor(n_estimators=100, max_depth=4, verbosity=0)
-    model.fit(X_train, y_train)
-
-    preds = model.predict(X_test)
-    rmse = np.sqrt(mean_squared_error(y_test, preds))
-    print(f"Model trained. Test RMSE: {rmse:.2f}")
-    return model
-
-
-def evaluate_cards(model, num_cards=3):
-    print("\nEvaluating card values in a single game state...")
-    state = generate_simplified_game_state(1).iloc[0:1].reset_index(drop=True)
-    cards = generate_random_card(num_cards).reset_index(drop=True)
-
-    for i in range(num_cards):
-        input_df = pd.concat([state, cards.iloc[i:i+1]], axis=1)
-        predicted_score = model.predict(input_df)[0]
-        print(f"Card {i+1}:")
-        print(cards.iloc[i])
-        print(f"Predicted Final Score if played: {predicted_score:.2f}\n")
-
-
-if __name__ == "__main__":
-    model = train_model()
-    evaluate_cards(model)
-"""
-
+    model = train_model(X, Y)
+    save_model(model)

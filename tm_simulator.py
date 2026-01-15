@@ -4,7 +4,12 @@ from main import Card
 from main import Player
 from main import TerraformingMarsSoloGame
 from collections import deque
+
 import random
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
 from xgboost import XGBRegressor
@@ -126,19 +131,19 @@ def policy_score(card, state):
     return score
 
 # (added) cards in hand function using binary presence vector
-def encode_hand(hand):
-    vec = np.zeros(len(GLOBAL_DECK), dtype=np.int8)
+def encode_hand(hand, deck_size):
+    vec = np.zeros(deck_size, dtype=np.int8)
     vec[hand] = 1
     return vec
 
-def encode_state(global_parameters, generation, terraform_rating, production, resources, resource_value, played_tags, cards_in_hand=[]):
+def encode_state(global_parameters, generation, terraform_rating, production, resources, resource_value, played_tags, card_sample, deck_size):
     return {
         "temperature": global_parameters.get("temperature"),
         "oxygen": global_parameters.get("oxygen"),
         "oceans": global_parameters.get("oceans"),
         "generation": generation,
         "terraform_rating": terraform_rating,
-        "cards_in_hand": encode_hand(cards_in_hand),
+        "cards_in_hand": encode_hand(card_sample, deck_size),
 
         "megacredits_production": production.get("megacredits"),
         "steel_production": production.get("steel"),
@@ -429,7 +434,7 @@ def monte_carlo_target(old_state, card, deck, N=12):
 
     return np.mean(scores)
 
-def build_training_row(old_state: dict, card: dict):
+def build_training_row(old_state: dict, card: dict, deck):
     # determine new state of game after card is played
     new_state = play_card(card, old_state)
 
@@ -453,7 +458,7 @@ def build_training_row(old_state: dict, card: dict):
     y_value = monte_carlo_target(
         old_state, 
         card,
-        GLOBAL_DECK,
+        deck,
         12
     )
     
@@ -477,7 +482,7 @@ def generation_from_progress(progress):
     return np.random.randint(lo, hi + 1)
 
 # generate state from random numbers
-def generate_random_state(card_sample):
+def generate_random_state(card_sample, deck_size):
 
         gp_rand = {
             "oxygen": np.random.randint(0, 14),
@@ -525,13 +530,52 @@ def generate_random_state(card_sample):
         }
 
         # returns a dataframe of the entire state
-        return encode_state(gp_rand, gen_rand, tr_rand, prod_rand, res_rand, res_value_rand, tags_rand, card_sample)
+        return encode_state(gp_rand, gen_rand, tr_rand, prod_rand, res_rand, res_value_rand, tags_rand, card_sample, deck_size=deck_size)
+
+
+def _generate_sample(_, deck):
+
+    np.random.seed()
+    random.seed()
+
+    deck_size = len(deck)
+
+    card_sample = random.sample(
+        range(len(deck)),
+        np.random.randint(1,11)
+    )
+
+    old_state_vec = generate_random_state(card_sample, deck_size)
+    card_vec = deck[card_sample[0]]
+
+    x_row, y_value = build_training_row(old_state_vec, card_vec, deck)
+
+    return x_row, {"target": y_value}
 
 # build dataset from random states
-def build_dataset(n_samples):
+def build_dataset(n_samples, max_workers=None):
     X_rows = []
     Y_rows = []
 
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_generate_sample, i, GLOBAL_DECK)
+            for i in range(n_samples)
+        ]
+
+        for future in tqdm(
+            as_completed(futures),
+            total=n_samples,
+            desc="Generatting samples",
+        ):
+            x_row,y_row = future.result()
+            X_rows.append(x_row)
+            Y_rows.append(y_row)
+
+    X = pd.DataFrame(X_rows).drop(columns=["card_name"])
+    Y = pd.DataFrame(Y_rows)
+
+    """
     for i in range(n_samples):
 
         # sample a random number of cards in hand
@@ -553,6 +597,7 @@ def build_dataset(n_samples):
     X = X.drop(columns=["card_name"])
     Y = pd.DataFrame(Y_rows)
 
+    """
     print(f"Completed dataset build of {n_samples} samples")
     return X, Y
 
@@ -605,6 +650,8 @@ if __name__ == "__main__":
     X, Y = build_dataset(10000)
 
     print(X.iloc[0])
+    X.to_csv("training_rows.csv")
+    Y.to_csv("training_target.csv")
 
-    model = train_model(X, Y)
-    save_model(model)
+    # model = train_model(X, Y)
+    # save_model(model)
